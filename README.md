@@ -73,13 +73,11 @@ python -m venv venv
 pip install -r requirements.txt
 playwright install
 Ejecución
+
 1. Captura de datos (scraper)
-bash
-Code kopieren
 python scraper/scrape_clal.py
+
 2️. Parseo de datos
-bash
-Code kopieren
 # convierte los archivos de red (JSON / BIN) a CSV limpio
 # salida: data/clal_powders_prices.csv
 python notebooks/parse_clal_bin.ipynb
