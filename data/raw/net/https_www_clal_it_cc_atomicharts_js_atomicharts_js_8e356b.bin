@@ -1,0 +1,1702 @@
+/*
+
+Atomicharts V 0.84
+
+*/
+//if (typeof console == "undefined" || typeof console.log == "undefined") var console = { log: function() {} };
+//var console = { log: function() {} };
+// Array Remove - By John Resig (MIT Licensed)
+var debugAtomicharts = false;
+Array.prototype.remove = function(from, to) {
+	var rest = this.slice((to || from) + 1 || this.length);
+	this.length = from < 0 ? this.length + from : from;
+	return this.push.apply(this, rest);
+};
+String.prototype.unescapeHtml = function () {
+	if(!this.length)
+		return this;
+	var temp = document.createElement("span");
+	temp.innerHTML = this;
+	var result = temp.childNodes[0].nodeValue;
+	temp.removeChild(temp.firstChild);
+	return result;
+};
+var $_GET = {};
+document.location.search.replace(/\??(?:([^=]+)=([^&]*)&?)/g, function () {
+	function decode(s) {
+		return decodeURIComponent(s.split("+").join(" "));
+	}
+	$_GET[decode(arguments[1])] = decode(arguments[2]);
+});
+function hexToRgb(hex) {
+	var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+	return result ? {
+		r: parseInt(result[1], 16),
+		g: parseInt(result[2], 16),
+		b: parseInt(result[3], 16)
+	} : {
+		r:0,g:0,b:0
+	};
+}
+var IS_RGBA_SUPPORTED = (function(){
+	var value = 'rgba(1,1,1,0.5)',
+		el = document.createElement('p'),
+		result = false;
+	try {
+		el.style.color = value;
+		result = /^rgba/.test(el.style.color);
+	} catch(e) { }
+	el = null;
+	return result;
+})();
+
+
+
+var atomichart={};
+var xmlproxypath = "clal20/cc/atomicharts/server/xmlproxy.php?url=";
+var locale = 'zz_ZZ';
+var host=(function(){
+	if(window.location.hostname==="localhost"){
+		if ( window.location.pathname.indexOf('teseo_index.php')!==-1 ) {
+			//ricavo la lingua attuale in modo dinamico
+			locale = clal_locale_lang || 'zz_ZZ';
+			//la aggiungo ai parametri GET per xmlproxy
+			xmlproxypath = "clal20/cc/atomicharts/server/xmlproxy_teseo.php?locale="+locale+"&url=";
+			return "http://localhost/clal/";
+		} else {
+			return "http://localhost/clal/";
+		}
+	}else if(window.location.hostname==="site.clal.it"){
+		return "http://site.clal.it/";
+	}else if(window.location.hostname==="teseo.clal.it"){
+		//ricavo la lingua attuale in modo dinamico
+		locale = clal_locale_lang || 'zz_ZZ';
+		//la aggiungo ai parametri GET per xmlproxy
+		xmlproxypath = "clal20/cc/atomicharts/server/xmlproxy_teseo.php?locale="+locale+"&url=";
+		return "https://teseo.clal.it/";
+	}
+	return "https://www.clal.it/";
+}());
+
+var neweu = (typeof clal_neweu !== 'undefined') ? clal_neweu : 0;
+
+var teseo=(function(){
+	return window.location.hostname === "teseo.clal.it" || (window.location.hostname === "localhost" && window.location.pathname.indexOf("teseo_index.php") > -1);
+}());
+var teseoStyle = {
+	color1 : '0x555555',
+	color2 : '#555',
+	color3 : '0xf2f1f0',
+	color4 : '#999999',
+	color5 : '0x999999',
+	color6 : '0x666666',
+	color7 : '0xfffefd',
+	colorF : '0xff0000',
+	alpha1 : 20,
+	borderWidth: 1.5,
+};
+
+window.chartsQueue = [];
+window.chartsLoading = [];
+maxChartsLoading = 5;
+
+function clearAtomichart(chartInfo){
+
+	if (chartInfo && chartInfo.container) { // togli grafico processato dalla lista dei loading
+		window.chartsLoading = window.chartsLoading.filter(
+			function(x){
+				return	(x.container !== chartInfo.container) ||
+						(x.url !== chartInfo.url);
+			}
+		);
+		if (debugAtomicharts) { console.log('out:', chartInfo.container, 'charts loading:',window.chartsLoading.length); }
+		window.chartsLoading.forEach(function(entry) {
+			if (debugAtomicharts) { console.log('- still loading:',entry.container); }
+		});
+	} else {
+		if (debugAtomicharts) { console.log('nextAtomichart free', chartInfo); }
+	}
+
+}
+
+function loadAtomichart(){
+
+	var i = 1;
+
+	while (window.chartsQueue.length && window.chartsLoading.length<maxChartsLoading) {
+		if (debugAtomicharts) { console.log('loadAtomichart ITERATION:',i, "Charts in Queue:",window.chartsQueue.length,"Charts Loading:",window.chartsLoading.length); }
+
+		var c = window.chartsQueue.shift();
+
+		if (debugAtomicharts) { console.log('load:', c.container); }
+		window.chartsLoading.push(c);
+
+		try {
+
+			if (debugAtomicharts) { console.log('drawAtomichart', c.container); }
+			drawAtomichart(c.url, c.container, nextAtomichart);
+
+		} catch (e) {
+			console.error(e);
+			nextAtomichart();
+		}
+
+		if (debugAtomicharts) { console.log('another round?',window.chartsQueue.length, window.chartsLoading.length,maxChartsLoading, window.chartsQueue.length && window.chartsLoading.length<maxChartsLoading); }
+
+		i = i+1;
+	}
+
+}
+
+function nextAtomichart(chartInfo){
+
+	clearAtomichart(chartInfo);
+
+	loadAtomichart();
+
+}
+
+function addAtomichart(chartUrl,chartContainer,chartCallback = null) {
+
+	window.chartsQueue.push({
+		url: chartUrl,
+		container: chartContainer,
+		callback: chartCallback
+	});
+
+	if (debugAtomicharts) { console.log('new:',chartContainer); }
+
+	if (debugAtomicharts) { console.log("Charts in Queue:",window.chartsQueue.length,"Charts loading:",window.chartsLoading.length); }
+	if (window.chartsLoading.length < maxChartsLoading) {
+		loadAtomichart(); // se la coda non era piena, riprendi a processarla
+	}
+
+}
+
+// Fallback per vecchia firma della funzione
+function addAtomichartJS(url,container,callback){
+	addAtomichart(url,container,callback);
+}
+
+function drawAtomichart(url,container,callback){
+
+	if (typeof callback !== "function") {
+		callback = function(data){
+			return true;
+		};
+	}
+
+	var $container=$("#"+container);
+	$container.empty();
+	if(atomichart[container] && atomichart[container].getChart() && atomichart[container].getChart().chart) {
+		if (debugAtomicharts) { console.log('I am going to destroy:',atomichart[container].getChart().chart); }
+		try {
+			atomichart[container].getChart().chart.destroy();
+		} catch (e) {
+			console.error(e);
+			if (debugAtomicharts) { console.log('I could not destroy... damn it!'); }
+		}
+	}
+	$.ajax( host+xmlproxypath+((window.location.pathname.indexOf("/en")>-1 && (typeof clal_locale_lang == 'undefined' || clal_locale_lang != 'en_US') )?"en/":"")+((window.location.pathname.indexOf("/ar")>-1)?"ar/":"")+url+"&neweu="+neweu )
+		.done(function(json) {
+
+			json.plot=[].concat(json.plot);
+			json.container=container;
+			var plots=[];
+
+			if (typeof json.plot === 'undefined') {
+				console.log('Atomicharts error');
+				return;
+			}
+
+			for(var p=0;p<json.plot.length;p++) {
+				if(json.plot[p]["@attributes"]["type"]=="barGroup") {
+					var group=json.plot[p];
+					group.plot=[].concat(group.plot);
+					for(var sp=0;sp<group.plot.length;sp++) {
+						var subplot=group.plot[sp];
+						subplot["@attributes"].stack=json.plot[p]["@attributes"]["name"];
+						subplot["@attributes"].y2axis=group["@attributes"]["y2axis"];
+						subplot["@attributes"]["groupPadding"]=(group["@attributes"]["width"]?parseFloat(group["@attributes"]["width"]):null);
+						if(group["@attributes"]["group_type"]=="stacked") {
+							subplot["@attributes"]["stacking"]="normal";
+							subplot["@attributes"]["stack"]=group["@attributes"]["name"];
+							plots=[subplot].concat(plots);//plots.push(subplot);
+						} else if(group["@attributes"]["group_type"]=="over") {
+							subplot["@attributes"]["grouping"]=false;
+							subplot["@attributes"]["stack"]=group["@attributes"]["name"];
+							plots=plots.concat([subplot]);//plots.push(subplot);
+						} else {
+							plots.push(subplot);
+						}
+
+					}
+				} else {
+					plots.push(json.plot[p]);
+				}
+			}
+			json.plot=plots;
+
+			atomichart[container]=new AtomiChart(json);
+		})
+		.fail(function(jqXHR, textStatus, errorThrown) {
+			console.error(jqXHR, textStatus, errorThrown);
+		})
+		.always(function(){
+			callback({
+				url: url,
+				container: container
+			});
+		});
+}
+
+function AtomiChart(json){
+	var self=this,
+		data=json,
+		chart={
+			chart:{},
+			series:{},
+			values:{},
+			extra_labels:[],
+			lastOnly: false
+		};
+
+
+	function calculateXAxisTickMargin(){
+		//var series=[],
+		//	n=0;
+		var borders=data.layout.borders["@attributes"],
+			marginLeft=parseInt(borders.x0)*1.1,
+			marginRight=parseInt(borders.x1)*1.1,
+			width=$("#"+data.container).width(),
+			n=0;
+
+		for(var s in chart.series) {
+			var serie=chart.series[s];
+
+			n=chart.values[serie["name"]].length / parseInt(serie["pace"]);
+
+
+		}
+
+		return n?Math.round(((width-marginLeft-marginRight) / n)/2):null;
+	}
+
+	function makeLabels(axis,options,formatterFunc){
+		var labels={
+			rotation: options.rotation?parseInt(options.rotation):0,
+			align:(function(){
+				if(axis=="x") {
+					var rotation=options.rotation?parseInt(options.rotation):0;
+					if(rotation<0) {
+						return "right";
+					}
+				}
+				if(axis=="y") {
+					if(options.opposite) {
+						return "left";
+					}
+				}
+				return options.fontalign;
+			}()),
+			y: (function(){
+
+				var rotation=options.rotation?parseInt(options.rotation):0;
+				if(axis=="x") {
+
+
+					var margin=parseInt(options.margin),
+						rotation=parseInt(options.rotation);
+
+					if(rotation<0) {
+						return margin+10;
+					}
+
+					if(rotation!=0) {
+						return 15+margin;
+					} else {
+						return 20+margin;
+					}
+				} else {
+					return null;
+				}
+			}()),
+			style:{
+				color: parseColor((teseo)?teseoStyle.color1:options.color),
+				fontSize: (parseInt(options.fontsize)+0)+"px",
+				fontWeight: options.fontbold?"bold":"normal",
+				textAlign:options.fontalign,
+				fontFamily:options.fontfamily
+			},
+			formatter:formatterFunc
+		};
+		if(axis=="x" && hasBars()) {
+			labels.x=calculateXAxisTickMargin();
+		}
+		return labels;
+	}
+	function makeExtraLabels(c,redraw) {
+
+		var options=(function(){
+			for(var e=0;e<chart.extra_labels.length;e++) {
+				if(chart.extra_labels[e].options) {
+					return chart.extra_labels[e].options;
+				}
+			}
+			return {};
+		}());
+
+		if(!options.auto) {
+			makeExtraLabelsOther(c,redraw);
+			return;
+		}
+
+		$("#"+data.container+" .extra").remove();
+
+
+
+		var totals=[];
+		for(var i=0;i<c.series.length;i++) {
+			var serie=c.series[i];
+			if(serie.visible) {
+				for(var j=0;j<serie.points.length;j++) {
+					var point=serie.points[j];
+
+					if(!totals[j]) {
+						totals[j]={
+							x:point.plotX,
+							y:point.plotY,
+							v:0,
+							w:point.pointWidth,
+							category: point.category
+						};
+					}
+					totals[j].y=Math.min(totals[j].y,point.plotY);
+					totals[j].v+=point.y;
+
+				}
+			}
+		}
+
+		for(var i=1;i<totals.length;i++) {
+			var total=totals[i];
+
+			var x=total.x+c.plotLeft,
+				fontsize=(options && options.fontsize)?parseInt(options.fontsize):11,
+				delta=(total.y>=0)?(-5):fontsize,
+				y=c.plotTop + total.y + delta,
+				empty=$.inArray(total.category, ["","-"," "])>-1,
+				prev_empty= i-1>=0 && $.inArray(totals[i-1].category, ["","-"," "])>-1; // se il punto è vuoto (usato per dividere colonne)
+
+			var	perc=(total.v-totals[i-1].v)/totals[i-1].v*100,
+				perc_str=Highcharts.numberFormat(perc,options.decimals || 2,options.float_sep || ",",options.thousands_sep || "");
+
+			if(perc>0)
+				perc_str="+"+perc_str;
+			perc_str+="%";
+
+			if(!options.step || i%options.step) {
+				c.renderer.text((empty || prev_empty)?"":perc_str, x-(perc_str.length/2*fontsize*0.6), y)
+					.attr("text-anchor","start")
+					.attr("class","extra")
+					.css({
+						color: (options && options.color) || ((teseo)?teseoStyle.color2:"#000"),
+						fontSize: (fontsize-1)+'px',
+						fontWeight: (options && options.fontbold)?"bold":"normal",
+						fontFamily:(options && options.fontfamily) || "Arial,sans-serif"
+					}).add();
+			}
+		}
+	}
+	function makeExtraLabelsOther(c,redraw) {
+
+
+		$("#"+data.container+" .extra").remove();
+		if(redraw) {
+			var all_visible=true;
+			for(var i=0;i<c.series.length;i++) {
+				if(!c.series[i].visible) {
+					all_visible=false;
+				}
+			}
+			if(!all_visible) {
+				return;
+			}
+		}
+		for(var e=0;e<chart.extra_labels.length;e++) {
+
+			var extra_labels=chart.extra_labels[e],
+				serie=c.series[extra_labels.index],
+				points=serie.points,
+				options=extra_labels.options || {};
+			options.symbol_var = parseInt(options.symbol_var)>0 || false;
+
+			for(var i=0;i<points.length;i++) {
+				if(extra_labels.items[i]!='-' && parseInt(extra_labels.items[i]*Math.pow(10,options.decimals || 2))!=0) {
+					var p=points[i],
+						v=parseFloat(extra_labels.items[i]);
+
+					options.symbol = options.symbol || "%";
+					options.pre_symbol = options.pre_symbol || "";
+
+					var v_str_sign="";
+					if ((options.symbol_var || options.symbol == "%") && v>0) {
+						v_str_sign="+";
+					}
+
+					var v_str=options.pre_symbol.unescapeHtml()+v_str_sign+Highcharts.numberFormat(v,options.decimals || 2,options.float_sep || ",",options.thousands_sep || "")+options.symbol.unescapeHtml();
+
+					var isLine = serie.type === "line" || serie.type === "spline";
+
+					if((isLine || p.graphic) && serie.visible) { //p.graphic potrebbe servire per le barre
+
+						var fontsize=(options.fontsize)?parseInt(options.fontsize):11,
+							x,
+							delta;
+
+						if ( isLine ) {
+							x = p.plotX+c.plotLeft;
+							delta=(p.y>=0)?(-2*fontsize):2*fontsize;
+						} else { // barre
+							x = p.barX+c.plotLeft+p.pointWidth/2; //c.plotLeft + p.graphic.x + p.pointWidth/2,
+							delta=(p.y>=0)?(-5):fontsize;
+						}
+
+						var y=c.plotTop + p.plotY + delta;
+
+						if(!options.step || i%options.step) {
+							c.renderer.text(v_str, x-(v_str.length/2*fontsize*0.6), y)
+								.attr("text-anchor","start")
+								.attr("class","extra")
+								.css({
+									color: options.color || ((teseo)?teseoStyle.color2:"#000"),
+									fontSize: (fontsize-1)+'px',
+									fontWeight: options.fontbold?"bold":"normal",
+									fontFamily:options.fontfamily || "Arial,sans-serif"
+								}).add();
+						}
+					}
+				}
+			}
+		}
+	}
+	function makeSubtitles(title,subtitles) {
+
+		subtitles = [].concat(subtitles);
+
+		var subtitle={
+			text:"",
+			color:"",
+			align:"center",
+			x:parseInt(data.layout.borders["@attributes"].x0)/2.2,
+			y:parseInt(data.layout.borders["@attributes"].y0)-(16*subtitles.length),
+			style:{
+				fontFamily:title.fontfamily,
+				lineHeight:(parseInt(subtitles[0]["@attributes"].fontsize)+1)+"px"
+			}
+		};
+		for(var i=0,l=subtitles.length;i<l;i++) {
+			var t=subtitles[i]["@attributes"];
+			subtitle.text+="<span style=\"font-family:"+title.fontfamily+";font-size:"+(parseInt(t.fontsize))+"px;color:"+parseColor(t.color)+";font-weight:"+((t.fontbold=="1")?"bold":"normal")+";\">"+t.title+"</span><br/>";
+			subtitle.color=parseColor(t.color);
+			subtitle.align= "center";
+		}
+		return subtitle;
+	}
+	function isXDataLocal(){
+		if(typeof data.xdata.values["v"] != 'undefined') {
+			return true;
+		}
+		return (data.xdata.values["@attributes"]["type"]=="local")
+
+	}
+	function xAxis(){
+		var options={
+			layout:data.layout.xaxis["@attributes"],
+			title:data.layout.xaxis.title?data.layout.xaxis.title["@attributes"]:null,
+			labels:(function(attr){
+				attr.style={
+					color:"#ff0000"
+				}
+				return attr;
+			}(data.layout.labels.xlabels["@attributes"])),
+			ticks:data.layout.ticks.xticks["@attributes"],
+			grid:data.layout.grid.vgrid["@attributes"],
+			data:(function(){
+				if(typeof data.xdata.values["v"] != 'undefined' && data.xdata.values.length>0) {
+					return {
+						type:"local",
+						min:0
+					}
+				} else {
+					return data.xdata.values["@attributes"];
+				}
+
+			}())
+		};
+
+		function getTickmarkPlacement(){
+			if(hasBars() && !hasLines() && options.data.type=="local")
+				return "between";
+			if(hasBars() && hasLines()) {
+				return "between";
+			}
+			if(!hasBars() && hasLines()) {
+				return "on";
+			}
+			if(hasBars() && !hasLines()){
+				return "on";
+			}
+
+			return null;
+		}
+
+		if(options.data.min)
+			options.data.min=parseInt(options.data.min);
+		var axis={
+			lineColor:parseColor((teseo)?teseoStyle.color1:options.layout.color),
+			lineWidth:((teseo)?teseoStyle.borderWidth:Math.ceil(parseFloat(options.layout.stroke))),
+			//min:0,
+			tickInterval:parseInt(data.layout.ticks.xticks["@attributes"]["tickInterval"]) || 1,
+			startOnTick:false,
+			tickmarkPlacement:hasBars()?"on":null,//getTickmarkPlacement(),
+			endOnTick:false,
+			//minPadding:1,
+			//maxPadding:1,
+			categories: (function(data){
+				var categories=null;
+				if(options.data.type=="linear") {
+				} else {
+					categories=data.xdata.values["v"].replace(/^\n/g, '').replace(/\n/g, '<br />').split(",");
+				}
+				return categories;
+			}(data)),
+			max:(function(xaxis_data){
+				var max=null;
+				if(options.data.type=="linear") {
+
+				} else {
+					max=xaxis_data.values["v"].split(",").length-1;
+				}
+				return max;
+			}(data.xdata)),
+			tickColor:parseColor((teseo)?teseoStyle.color1:options.ticks.color),
+			tickLength:parseInt(options.ticks.length),
+			tickWidth:parseInt(options.ticks.stroke),
+
+			gridLineWidth:parseInt(options.grid.stroke),
+			gridLineColor:parseColor((teseo)?teseoStyle.color3:options.grid.color),
+			gridLineDashStyle:options.grid.stroketype,
+
+			minorGridLineWidth:parseInt(options.grid.minor)?parseInt(options.grid.stroke):0,
+			minorGridLineColor:parseColor((teseo)?teseoStyle.color3:options.grid.color),
+			minorGridLineDashStyle:options.grid.stroketype,
+
+			alternateGridColor: (function(){
+				var color="";
+				if(!IS_RGBA_SUPPORTED) {
+					color=(teseo)?teseoStyle.color4:"#dce6f2";
+				} else {
+					var rgb=hexToRgb(parseColor((teseo)?teseoStyle.color5:options.grid.color)),
+						alpha=parseInt(options.grid.alpha)/100;
+
+					color="rgba("+rgb.r+","+rgb.g+","+rgb.b+","+(alpha/10)+")";
+
+				}
+				return (data.layout["@attributes"]["bgType"]=="vertical_stripe")?color:"";
+			}()),
+
+			showFirstLabel:true,
+			title:options.title?{
+				text: options.title.title,
+				align: transformAlignment(options.title.align),
+				margin:parseInt(options.title.margin)*0.5,
+				style:{
+					color: parseColor((teseo)?teseoStyle.color1:options.title.color),
+					fontSize: (parseInt(options.title.fontsize)+2)+"px",
+					fontWeight: options.title.fontbold?"bold":"normal",
+					textAlign:options.title.fontalign,
+					fontFamily:options.title.fontfamily
+				}
+			}:null,
+			labels:makeLabels("x",options.labels,function(){
+				//return this.value;
+				return this.value+((options.data.type=="linear")?options.data.min:"")
+			})
+		};
+
+		return axis;
+	}
+
+	function yAxis(axis_name,labels_name,ticks_name,opposite){
+		var yaxis=data.layout[axis_name],
+			ylabels=data.layout.labels[labels_name],
+			yticks=data.layout.ticks[ticks_name];
+		ylabels["@attributes"].opposite=opposite;
+
+		//console.warn(yaxis);
+
+		var options={
+				layout:yaxis["@attributes"],
+				title:yaxis.title["@attributes"],
+				labels:ylabels["@attributes"],
+				ticks:yticks["@attributes"],
+				grid:data.layout.grid.hgrid["@attributes"]
+			},
+			gracebottom=(function(){
+				var grace=0;
+				if(opposite) {
+					grace=(options.grid.gracebottom2!=null)?parseFloat(options.grid.gracebottom2):0
+				} else {
+					grace=(options.grid.gracebottom!=null)?parseFloat(options.grid.gracebottom):0
+				}
+				if(grace>1) {
+					if(grace<=10)
+						return 0.1;
+					if(grace<=100)
+						return grace/100;
+					if(grace<=1000)
+						return grace/1000;
+				}
+				if(grace===1)
+					return 0.1;
+				return grace;
+			}()),
+			gracetop=(function(){
+				var grace=0;
+				if(opposite) {
+					grace=(options.grid.gracetop2!=null)?parseFloat(options.grid.gracetop2):0
+				} else {
+					grace=(options.grid.gracetop!=null)?parseFloat(options.grid.gracetop):0
+				}
+				if(grace>1) {
+					if(grace<=10)
+						return 0.1;
+					if(grace<=100)
+						return grace/100;
+					if(grace<=1000)
+						return grace/1000;
+				}
+				if(grace===1)
+					return 0.1;
+				return grace;
+			}()),
+			grid_min=opposite?options.grid.min2:options.grid.min,
+			grid_max=opposite?options.grid.max2:options.grid.max,
+			axis={
+
+				lineColor:parseColor((teseo)?teseoStyle.color1:options.layout.color),
+				lineWidth:((teseo)?teseoStyle.borderWidth:options.layout.stroke),
+				minPadding:gracebottom,//>0?(1/gracebottom*2):0,
+				maxPadding:gracetop,//>0?(1/gracetop*2):0,
+				min:(grid_min=="auto")?null:parseFloat(grid_min),
+				max:(grid_max=="auto")?null:parseFloat(grid_max),
+
+				title: {
+					text: options.title.title,
+					margin:5,//parseInt(options.title.margin),
+					style:{
+						color: parseColor((teseo)?teseoStyle.color1:options.title.color),
+						fontSize: (parseInt(options.title.fontsize)+2)+"px",
+						fontWeight: options.title.fontbold?"bold":"normal",
+						textAlign:options.title.fontalign,
+						fontFamily:options.title.fontfamily
+					}
+				},
+				showFirstLabel:true,
+
+				labels:makeLabels("y",options.labels,function(){
+					//return this.value;
+					var labels={
+						align:"left",
+						overflow: 'justify',
+						decimals:options.labels.decimals,
+						float_sep:options.labels.float_sep,
+						thousands_sep:options.labels.thousands_sep,
+						symbol:options.labels.symbol || ""
+					};
+					return Highcharts.numberFormat(this.value,labels.decimals,labels.float_sep,labels.thousands_sep)+labels.symbol.unescapeHtml();
+
+
+				}),
+
+				gridLineWidth:parseInt(options.grid.stroke),
+				gridLineColor:parseColor((teseo)?teseoStyle.color6:options.grid.color),
+				gridLineDashStyle:options.grid.stroketype,
+
+				minorGridLineWidth:parseInt(options.grid.minor)?parseInt(options.grid.stroke):0,
+				minorGridLineColor:parseColor((teseo)?teseoStyle.color6:options.grid.color),
+				minorGridLineDashStyle:options.grid.stroketype,
+
+				alternateGridColor: (function(){
+					var color="";
+					if(!IS_RGBA_SUPPORTED) {
+						color=(teseo)?teseoStyle.color4:"#dce6f2";
+					} else {
+						var rgb=hexToRgb(parseColor((teseo)?teseoStyle.color5:options.grid.color)),
+							alpha=parseInt(options.grid.alpha)/100;
+
+						color="rgba("+rgb.r+","+rgb.g+","+rgb.b+","+(alpha/10)+")";
+
+					}
+					return (data.layout["@attributes"]["bgType"]=="horizontal_stripe")?color:"";
+				}()),
+				opposite:opposite,
+				plotLines: [{
+					value: 0,
+					width: 1,
+					color: '#808080'
+				}]
+			};
+
+		return axis;
+	}
+	function makeMarker(options,points){
+
+		if(!options)
+			return {enabled:false};
+
+		return {
+			enabled:(options.enabled || points===1),
+			fillColor:parseColor(options.backgroundcolor),
+			lineColor:parseColor(options.strokecolor),
+			lineWidth:parseInt(options.stroke),
+			radius:parseInt(options.width/1.5),
+			symbol:"circle",
+			states:{
+				hover:{
+					enabled:true
+				}
+			}
+		}
+
+	}
+
+	function hasBars(){
+		for(var s in chart.series) {
+			//alert(chart.series[s]["type"])
+			if(chart.series[s]["type"]=="bar")
+				return true;
+		}
+		return false;
+	}
+	function hasLines(){
+		for(var s in chart.series) {
+			//alert(chart.series[s]["type"])
+			if(chart.series[s]["type"]=="line" || chart.series[s]["type"]=="filledline") {
+				return true;
+			}
+		}
+		return false;
+	}
+	function getSeries(){
+		var series=[],
+			series_prog=0;
+		chart.lastOnly = false;
+
+		for(var s in chart.series) {
+			var serie=chart.series[s];
+			serie["unique"] = $.now()+'_'+series_prog;
+			series_prog++;
+			var __serie={
+				type:serie["type"],
+				id:serie["name"],
+				name:serie["title"],
+				data:chart.values[serie["name"]],
+				color:parseColor(serie["color"]),
+				lineWidth:Math.ceil(parseFloat(serie["stroke"]))+1,
+				pointInterval:1/parseInt(serie["pace"]),
+				yAxis:parseInt(serie["y2axis"]) || 0,
+				marker:makeMarker(serie.marker,chart.values[serie["name"]].length),
+				interactive:serie.tooltip,
+				dashStyle:serie["dashStyle"],
+				unique:serie["unique"]
+			};
+
+			switch(__serie.type) {
+				case "line":
+					if (serie.poly=="true") {
+						__serie.type="line";
+					} else {
+						__serie.type="spline";
+					}
+					if(serie.shadow)
+						__serie.shadow=true;
+
+					if(serie.labels) {
+						if ($.type(window.achart_labelFormat) === 'undefined') {
+							window.achart_labelFormat = [];
+						}
+						window.achart_labelFormat[serie.unique]={
+//								overflow: 'justify',
+							decimals:serie.labels.decimals || 0,
+							float_sep:serie.labels.float_sep || ".",
+							thousands_sep:serie.labels.thousands_sep || "",
+							symbol:serie.labels.symbol || "",
+							fontWeight: (serie.labels.fontbold=='1') ? 'bold' : 'normal',
+							fontSize: (serie.labels.fontsize) ? (Math.floor(serie.labels.fontsize)) : 11,
+							fontFamily:serie.labels.fontfamily||"Arial,sans-serif",
+							color:parseColor(serie.labels.fontcolor) || '#111111',
+							backgroundColor: (serie.labels.backgroundcolor) ? parseColor(serie.labels.backgroundcolor) : undefined,
+							align:serie.labels.align || "center",
+							lastOnly: serie.labels.lastOnly || false
+						};
+						var labels_percentage = serie.labels.percentage;
+						var labels_percentage_decimals = serie.labels.percentage?serie.labels.percentage_decimals:false;
+						var labels_var_perc = serie.labels.var_perc;
+						var labels_pace = chart.values.pace || 1;
+						chart.lastOnly = window.achart_labelFormat[__serie.unique].lastOnly;
+						var labels_custom_padding = 0;
+						if (window.achart_labelFormat[__serie.unique].lastOnly) {
+							labels_custom_padding = 11;
+						} else if (window.achart_labelFormat[__serie.unique].backgroundColor === undefined) {
+							labels_custom_padding = window.achart_labelFormat[__serie.unique].fontSize;
+						}
+//							console.log(window.achart_labelFormat.backgroundColor, window.achart_labelFormat.backgroundColor === undefined, window.achart_labelFormat.fontSize);
+
+						__serie.dataLabels= {
+							enabled: true,
+							crop: window.achart_labelFormat[__serie.unique].lastOnly?false:true,
+							overflow: window.achart_labelFormat[__serie.unique].lastOnly?'none':'justify',
+							color: window.achart_labelFormat[__serie.unique].lastOnly?__serie.color:window.achart_labelFormat[__serie.unique].color,
+							backgroundColor:window.achart_labelFormat[__serie.unique].backgroundColor,
+							align: window.achart_labelFormat[__serie.unique].lastOnly?'left':window.achart_labelFormat[__serie.unique].align,
+							verticalAlign: window.achart_labelFormat[__serie.unique].lastOnly?'middle':'bottom',
+							allowOverlap: false,
+							padding: labels_custom_padding,
+							style: {
+								fontWeight: window.achart_labelFormat[__serie.unique].fontWeight,
+								fontSize: window.achart_labelFormat[__serie.unique].fontSize,
+								fontFamily: window.achart_labelFormat[__serie.unique].fontFamily
+							},
+							formatter:function(){
+								var labelFormat = window.achart_labelFormat[this.series.options.unique];
+
+								if(this.y===0 || this.y === null)
+									return null;
+
+								if($.type(this.key) !== "string" && $.type(this.key) !== "number")
+									return null;
+
+								var isLast = false,
+									result = '';
+
+								if (this.point.x === this.series.data[this.series.data.length - 1].x && this.point.y === this.series.data[this.series.data.length - 1].y) {
+									isLast = true;
+								}
+								if (!window.achart_labelFormat[this.series.options.unique].lastOnly || isLast) {
+									result = Highcharts.numberFormat(this.y,labelFormat.decimals,labelFormat.float_sep,labelFormat.thousands_sep)+labelFormat.symbol.unescapeHtml();
+								}
+//							  	  	if (labels_percentage == 1) {
+//							  	  		result+='<br/>'+Highcharts.numberFormat(this.percentage,serie.labels.percentage_decimals || labelFormat.decimals,labelFormat.float_sep,labelFormat.thousands_sep)+"%";
+//							  	  	}
+//							  	  	if (labels_var_perc == 1) {
+//							  	  		if (typeof window.previousPoint != 'undefined' && previousPoint.series===this.series) {
+//							  	  			color=(window.previousPoint.y < this.y)?"#007700":"#AA0000";
+//							  	  			result+='<br/><span style="color:'+color+';font-style:italic;">';
+//							  	  			result+=(window.previousPoint.y < this.y)?"+":"";
+//							  	  			result+=Highcharts.numberFormat((this.y-window.previousPoint.y)*100/window.previousPoint.y,serie.labels.var_perc_decimals || labelFormat.decimals,labelFormat.float_sep,labelFormat.thousands_sep)+"%</span>";
+//							  	  		}
+//							  	  		window.previousPoint = this;
+//							  	  	}
+								return result;
+							}
+						};
+					}
+					break;
+				case "filledline":
+					__serie.type="areaspline";
+					__serie.color=parseColor(serie["fillcolor"]);
+					__serie.lineColor=parseColor(serie["color"]);
+					__serie.fillOpacity=parseInt(serie["fillalpha"])/100;
+					break;
+				case "column":
+				case "bar":
+					__serie.type="column";
+
+					if(serie.filltype=="gradient") {
+						var rgb1=parseColor(serie["fillcolor"]),
+							rgb2=parseColor(serie["fillcolor2"]),
+							gradient=(__serie.type=="column")?{x1: 0,y1: 1,x2: 0,y2: 0}:{x1: 0,y1: 0,x2: 1,y2: 0};
+
+						if(IS_RGBA_SUPPORTED) {
+							rgb1=hexToRgb(rgb1);
+							rgb2=hexToRgb(rgb2);
+							rgb1="rgba("+rgb1.r+","+rgb1.g+","+rgb1.b+","+(parseInt(serie["fillalpha"])/100)+")";
+							rgb2="rgba("+rgb2.r+","+rgb2.g+","+rgb2.b+","+(parseInt(serie["fillalpha"])/100)+")";
+						}
+
+						__serie.color={
+							linearGradient: gradient,
+							stops: [
+								[0, rgb1],
+								[1, rgb2]
+							]
+						};
+					} else {
+						var hex=parseColor(serie["fillcolor"]);
+						if(IS_RGBA_SUPPORTED) {
+							var rgb=hexToRgb(hex);
+							__serie.color="rgba("+rgb.r+","+rgb.g+","+rgb.b+","+(parseInt(serie["fillalpha"])/100)+")";//parseColor(serie["fillcolor"]);
+						} else {
+							__serie.color=hex;
+						}
+					}
+
+					//__serie.pointWidth=20;
+
+				function getPointPlacement(){
+					//(((!serie["stacking"] || (hasLines())) && hasBars())?"between":null);
+					//if(isXDataLocal())
+					//	return null;
+					if(serie["stacking"])
+						return "between";
+					if(hasBars())
+						return "between";
+					return null;
+				}
+
+					var pdd=1-parseFloat(serie["width"])*1.1;
+					__serie.pointPadding=0.1;//pdd<0?0:pdd;
+
+					if(serie["groupPadding"]!=null) {
+						var gpd=1-serie["groupPadding"]*1.2;
+						__serie.groupPadding=0;//gpd<0?0:gpd;
+					} else {
+						__serie.groupPadding=0.1;
+					}
+
+					__serie.grouping=serie["grouping"];
+					//__serie.pointPlacement=getPointPlacement();
+
+					if(serie["pace"]=="1")
+						__serie.pointRange=serie["pace"];
+
+					__serie.borderWidth= Math.ceil(parseFloat(serie["stroke"]));
+					__serie.borderColor=parseColor(serie["color"]);
+
+					if(serie["stacking"]) {
+						__serie.stacking=serie["stacking"];
+						__serie.stack=serie["stack"];
+					}
+
+
+					if(serie.labels) {
+						var labelFormat={
+							overflow: 'justify',
+							decimals:serie.labels.decimals || 0,
+							float_sep:serie.labels.float_sep || ".",
+							thousands_sep:serie.labels.thousands_sep || "",
+							symbol:serie.labels.symbol || ""
+						};
+						var labels_percentage = serie.labels.percentage;
+						var labels_percentage_decimals = serie.labels.percentage?serie.labels.percentage_decimals:false;
+						var labels_var_perc = serie.labels.var_perc;
+						__serie.dataLabels= {
+							enabled: true,
+							crop:false,
+							color: parseColor(serie.labels.fontcolor) || '#111111',
+							align: serie.labels.align || "center",
+							style: {
+								fontWeight:serie.labels.fontweight || 'normal',
+								fontSize:(Math.floor(serie.labels.fontsize)+"px") || 11,
+								fontFamily:serie.labels.fontfamily||"Arial,sans-serif"
+							},
+							formatter:function(){
+								// /decimals="0" float_sep="," thousands_sep="."
+
+								if(this.y===0 || this.y === null)
+									return null;
+
+								if(this.point.graphic.height<(serie.labels?serie.labels.fontsize:15)) {
+									return null;
+								}
+
+								result = Highcharts.numberFormat(this.y,labelFormat.decimals,labelFormat.float_sep,labelFormat.thousands_sep)+labelFormat.symbol.unescapeHtml();
+								if (labels_percentage == 1) {
+									result+='<br/>'+Highcharts.numberFormat(this.percentage,serie.labels.percentage_decimals || labelFormat.decimals,labelFormat.float_sep,labelFormat.thousands_sep)+"%";
+								}
+								if (labels_var_perc == 1) {
+									if (typeof window.previousPoint != 'undefined' && previousPoint.series===this.series) {
+										color=(window.previousPoint.y < this.y)?"#007700":"#AA0000";
+										result+='<br/><span style="color:'+color+';font-style:italic;">';
+										result+=(window.previousPoint.y < this.y)?"+":"";
+										result+=Highcharts.numberFormat((this.y-window.previousPoint.y)*100/window.previousPoint.y,serie.labels.var_perc_decimals || labelFormat.decimals,labelFormat.float_sep,labelFormat.thousands_sep)+"%</span>";
+									}
+									window.previousPoint = this;
+								}
+								return result;
+								//	return this.value;
+							}
+						};
+					}
+
+					break;
+			}
+			series.push(__serie)
+		}
+
+
+		return series;
+	}
+	function draw(){
+		var borders=data.layout.borders["@attributes"],
+			title={
+				options:data.layout.title["@attributes"],
+				subtitles:[]
+			};
+		chart.chart=new Highcharts.Chart({
+			chart: {
+				renderTo: data.container,
+				//type: 'line',
+
+				//width:"100%",//parseInt(data.layout["@attributes"].width),
+				//height:"100%",//parseInt(data.layout["@attributes"].height),
+
+				marginLeft:parseInt(borders.x0)*1.2,
+				marginRight: parseInt(borders.x1)*1.2,
+
+				marginTop:parseInt(borders.y0)*1.1,
+				marginBottom: parseInt(borders.y1)*1.1,
+
+				plotBorderColor: (function(){
+
+					var hasLastOnly = false;
+					$(data.plot).each(function(i,p){
+						if (typeof p.labels !== 'undefined' && typeof p.labels["@attributes"] !== 'undefined') {
+							hasLastOnly = hasLastOnly || p.labels["@attributes"].lastOnly=='true';
+						}
+					});
+					var color=(teseo)?teseoStyle.color1:borders.color,
+						// trasparente se è utilizzato lastOnly in almeno un plot
+						alpha=hasLastOnly ? 0 : 100;
+					return getTransparentColor(color,alpha);
+				}()),
+				plotBorderWidth:(teseo)?teseoStyle.borderWidth:parseInt(borders.stroke),
+				plotBackgroundColor:(function(){
+					var color=(teseo)?teseoStyle.color7:(data.layout["@attributes"].color1 || data.layout["@attributes"].color),
+						alpha=data.layout["@attributes"].alpha || 1;
+					return getTransparentColor(color,alpha);
+				}()),
+				//backgroundColor: null,
+				//plotBackgroundImage:"http://localhost/clal/clal20/img/logo_clal.png",
+				events: {
+
+					load:function(e){
+
+					},
+					redraw: function(e) {
+						setBackgroundImage(this,data.layout.background["@attributes"])
+						if(chart.extra_labels.length) {
+							makeExtraLabels(this,true);
+						}
+					}
+
+				}
+			},
+			navigation: {
+				buttonOptions: {
+					enabled: false
+				}
+			},
+			exporting: {
+				type: 'image/png',
+				scale: 2,
+				filename: "\""+title.options.title+"\""
+			},
+			credits:{
+				enabled:(window.location.pathname.indexOf("/widgets/") >= 0),
+				href:"https://www.clal.it/?utm_source=widget&utm_medium=website&utm_campaign=widgetCharts",
+				position: {
+					align: 'left',
+					x: 12,
+					verticalAlign: 'bottom',
+					y: -5
+				},
+				text:"CLAL.it",
+				style: {
+					fontSize: '100%',
+					fontWeight:'bold'
+				}
+			},
+			title: {
+				text: title.options.title,
+				x: parseInt(borders.x0)/2.2,
+				y:2,
+				align: "center",
+				style:{
+					width:(parseInt(data.layout["@attributes"].width)-parseInt(borders.x0)/2.2-parseInt(borders.x1)/2.2)+"px",
+					color: parseColor(title.options.color),
+					fontSize: (parseInt(title.options.fontsize)+0)+"px",
+					fontWeight: title.options.fontbold?"bold":"normal",
+					textAlign:title.options.fontalign,
+					fontFamily:title.options.fontfamily
+				}
+			},
+
+			subtitle: makeSubtitles(title.options,function(){
+				data.layout.title.subtitle.fontFamily=title.options.fontfamily;
+				return data.layout.title.subtitle
+			}()),
+
+			plotOptions:{
+				areaspline:{
+					stacking: (data.plot[0]['@attributes'].type=="filledline" && data.plot[0]['@attributes'].stacking)?data.plot[0]['@attributes'].stacking:null
+				},
+				series:{
+					shadow:false,
+					marker:{
+						enabled:true
+					},
+					pointPlacement: hasBars()?'between':null
+				},
+				column: {
+					pointPlacement: 'between'
+				}
+			},
+
+			xAxis: xAxis(),
+
+			yAxis: (function(){
+				var axes=[].concat(yAxis("yaxis","ylabels","yticks",false));
+				if(data.layout["y2axis"]) {
+					axes=axes.concat(yAxis("y2axis","y2labels","y2ticks",true))
+				}
+				return axes;
+			}()),
+
+			tooltip:(function(){
+
+				return {
+					borderWidth:2,
+					backgroundColor:IS_RGBA_SUPPORTED?"rgba(255,255,255,0.9)":"#ffffff",
+					formatter:function(){
+
+						var options=this.series.options.interactive,
+							xStr="",
+							str=this.y;
+
+						if(typeof this.key == "string") {
+							xStr="<b style=\"color:"+((teseo)?teseoStyle.color2:'#333')+";\">"+this.series.name+"</b><br/>"+this.key;
+						} else {
+							if(this.series.points.length>this.series.chart.axes[0].tickAmount) {
+								xStr=leadZero(this.point.marker.index+1)+"/"+this.series.xAxis.ticks[Math.floor(this.key+0.005)].label.textStr;
+							} else {
+								xStr=this.series.xAxis.ticks[Math.floor(this.key+0.005)].label.textStr;
+							}
+
+						}
+
+						if(options) {
+							var v=Highcharts.numberFormat(this.y,options.decimals||0,options.float_sep,options.thousands_sep)+options.unit.unescapeHtml();
+							str=xStr+": "+v;
+						}
+
+						if(options && options.title){
+							//str=options.title+"<br/>"+str;
+						}
+						if(options && options.unit){
+							//unistr+=options.unit;
+						}
+						if(options && (typeof options.percentage != 'undefined')){
+							str+='<br/>'+Highcharts.numberFormat(this.percentage,options.percentage_decimals||0,options.float_sep,options.thousands_sep)+"%";
+							//str+=(window.location.pathname.indexOf("/en")>-1)?" of total":" del totale";
+							if ((window.location.pathname.indexOf("/en")>-1)  || (clal_locale_lang == 'en_US'))
+								str+=" of total";
+							else if (window.location.pathname.indexOf("/en")>-1)
+								str+=" del totale";
+							else
+								str+=" del totale";
+						}
+
+						return str;
+
+					},
+					style: {
+						color: (teseo)?teseoStyle.color2:'#333333',
+						fontSize: '11px',
+						padding: '3px'
+					}
+				}
+			}()),
+			legend: (function(__this){
+				if(!data.layout.legend)
+					return {
+						enabled:false
+					};
+
+				var legend=data.layout.legend["@attributes"];
+
+				return {
+					layout: legend.orientation,
+					align: legend.align,
+					verticalAlign: legend.valign,
+					floating:true,
+					x: (function(){
+						//return parseInt(borders.x0)+parseInt(legend.left)
+						var x=0;
+						switch(legend.align) {
+							case "left":
+								x=parseInt(borders.x0)+parseInt(legend.left)
+								break;
+							case "right":
+								x=-parseInt(borders.x1)+parseInt(legend.left)
+								break;
+						}
+						return x;
+					}()),//50+parseInt(legend.left),
+					y: (function(){
+						var y=0;
+						switch(legend.valign) {
+							case "top":
+								y=parseInt(borders.y0)+parseInt(legend.top)
+								break;
+							case "bottom":
+								y=-parseInt(borders.y1)+parseInt(legend.top)
+								break;
+						}
+						return y;
+					}()),
+					symbolWidth:12,
+					symbolPadding:4,
+					borderColor: parseColor((teseo)?teseoStyle.color1:legend.strokecolor),
+					borderWidth: parseInt(legend.stroke),
+					itemMarginTop:3,
+					itemStyle:{
+						fontFamily:legend.fontfamily,
+						fontSize:parseInt(legend.fontsize)+"px",
+						fontWeight: legend.fontbold?"bold":"normal",
+						color:parseColor((teseo)?teseoStyle.color1:legend.color)
+					},
+					backgroundColor:getTransparentColor(legend.bgcolor,legend.alpha),
+					borderRadius:0//,
+					//useHTML:true
+				};
+			}(this)),
+			series:getSeries()
+		},function(c) { // on complete
+			this.bgImage=setBackgroundImage(c,data.layout.background["@attributes"]);
+			if(chart.extra_labels.length) {
+				makeExtraLabels(c);
+			}
+
+
+			addDownloadButton(this);
+
+			correctOverlap(this);
+
+
+			return this;
+		});
+	}
+	function addDownloadButton(chart) {
+
+
+		$("<div/>",{
+			"class":"download",
+			css: {
+				right:Math.round(chart.optionsMarginRight)+5,
+				top:Math.round(chart.optionsMarginTop)+5
+			},
+			click: (function(chart){
+				return function(){
+					chart.exportChart();
+				};
+			}(chart))
+		}).appendTo("#"+chart.container.id)
+	}
+	function correctOverlap(c) {
+
+		// Solo se ha almeno una serie con labels di tipo lastOnly
+		if (typeof chart.lastOnly === "undefined" || !chart.lastOnly) {
+			return false;
+		}
+
+		var container = $(c.renderTo),
+			dataLabels = $(container).find('.highcharts-data-labels');
+
+		var labels = dataLabels.map(function(d){
+			var o = {};
+
+			o.container = container;
+			o.lastLabelG = $(this).children().last()[0];
+
+			o.translate = $(o.lastLabelG).attr('transform')
+				.split('translate(')[1]
+				.slice(0,-1)
+				.split(',');
+			o.translateX = parseInt(o.translate[0]);
+			o.translateY = parseInt(o.translate[1]);
+
+			o.text = $(o.lastLabelG).children()[0];
+			o.textY = parseInt( $(o.text).attr('y') );
+			o.fontSize = parseInt($(o.text).css('font-size')
+				.split('px')[0]);
+			o.bottom = o.translateY + o.textY;
+			o.top = o.translateY + o.textY - o.fontSize;
+
+			return o;
+		});
+
+		// sort labels by o.bottom reversed
+		labels.sort(function (a, b) {
+			return b.bottom - a.bottom;
+		});
+
+		if (labels.length === 1) {
+
+
+
+		} else if (labels.length > 1) {
+
+			resolveOverlap(labels, true, 5);
+
+		}
+	}
+	function resolveOverlap( labels, direction, counter ){
+		if (counter === 0) {
+			return false;
+		}
+
+		var i;
+		var over = false;
+
+//            console.log(labels);
+
+		if (!direction) { // dalla label bassa in su
+			for (i=0; i<labels.length-1; i++) {
+				var overlap = measureOverlap(labels[i], labels[i+1]);
+//                    console.log(labels[i].container, i, i+1, overlap, direction, labels[i], labels[i+1]);
+				if (overlap < 0) {
+					var newY = labels[i].textY - overlap;
+					$(labels[i].text).attr('y', newY);
+					// aggiorna labels
+					updateOverlapLabels( labels, i, newY );
+
+					over = true;
+				}
+			}
+		} else { // dalla label più alta in giù
+			for (i=labels.length-1; i>0; i--) {
+				var overlap = measureOverlap(labels[i-1], labels[i]);
+//                    console.log(labels[i].container, i-1, i, overlap, direction, labels[i-1], labels[i]);
+				if (overlap < 0) {
+					var newY = labels[i].textY + overlap;
+					$(labels[i].text).attr('y', newY);
+					// aggiorna labels
+					updateOverlapLabels( labels, i, newY );
+
+					over = true;
+				}
+			}
+		}
+//            console.log('over', over);
+
+		if (over) { // c'è stato un overlap
+			resolveOverlap( labels, direction, counter-1 ); // loop
+		}
+
+	}
+	function measureOverlap(a, b){
+		return a.top - a.fontSize*.25 - b.bottom; // margine di .25em
+	}
+	function updateOverlapLabels( labels, i, newY ){
+		labels[i].textY = newY;
+		labels[i].bottom = labels[i].translateY + labels[i].textY;
+		labels[i].top = labels[i].translateY + labels[i].textY - labels[i].fontSize;
+	}
+	this.getChart=function(){
+		return chart;
+	}
+	this.addBorder=function(x,perc) {
+
+		if(perc) {
+			x=x*chart.chart.plotWidth;
+		}
+		x= x + chart.chart.plotLeft;
+
+		var y=chart.chart.plotTop,
+			w=6,
+			h=chart.chart.plotHeight;
+
+		chart.chart.renderer.rect(x, y, w, h, 0)
+			.attr({
+				'stroke-width': 0,
+				stroke: '#395C9D',
+				fill: 'white',
+				zIndex: 6
+			})
+			.add();
+
+
+	}
+	function loadData(index){
+
+		if(index<data.plot.length) {
+			//workaround for series with same name
+			data.plot[index]["@attributes"]["name"]+=index;
+
+			var plot=data.plot[index],
+				options=plot["@attributes"];
+
+			options.dashStyle=options.dashStyle?options.dashStyle:null;
+
+			options.shadow=plot.shadow?plot.shadow["@attributes"]:null;
+			options.marker=plot.marks?plot.marks["@attributes"]:null;
+			options.tooltip=plot.interactive?plot.interactive["@attributes"]:null;
+			options.labels=plot.labels?plot.labels["@attributes"]:null;
+
+			if(options.tooltip) {
+				options.tooltip.title=plot.interactive["@attributes"]["title"] || null;
+				options.tooltip.unit=plot.interactive["@attributes"]["unit"] || "";
+				options.tooltip.decimals=plot.interactive["@attributes"]["decimals"] || 2;
+				options.tooltip.float_sep=plot.interactive["@attributes"]["float_sep"] || ".";
+				options.tooltip.thousands_sep=plot.interactive["@attributes"]["thousands_sep"] || "";
+			}
+
+
+			if(plot.extra_labels) {
+
+				if(plot.extra_labels["v"]) {
+					chart.extra_labels.push({
+						items:(typeof plot.extra_labels["v"] == 'string')?plot.extra_labels["v"].split(","):[],
+						options:plot.extra_labels["@attributes"],
+						index:index
+					});
+				} else {
+					if (chart.extra_labels.length && chart.extra_labels[0].length) {
+						chart.extra_labels.push({
+							items:plot.extra_labels.split(","),
+							index:index
+						});
+					} else {
+						chart.extra_labels.push({
+							items:null,
+							options:plot.extra_labels["@attributes"],
+							index:index
+						});
+					}
+				}
+
+			}
+
+
+
+			chart.series[options["name"]]=options;
+
+			if(typeof plot.values == "string") {
+				options.pace=1;
+
+				chart.values[options["name"]]=plot.values.split(",");
+
+				for(var i=0;i<chart.values[options["name"]].length;i++) {
+					var val=chart.values[options["name"]][i],
+						value={
+							y:parseFloat(val),
+							marker:{
+								enabled:true,//(i%options.pace===0),
+								radius:(options.marker!=null && i%options.pace===0)?parseInt(options.marker["width"])*2/3:0,
+								index:i%options.pace
+							}
+						};
+					chart.values[options["name"]][i]=(val=="-")?null:value;
+					//parseFloat(val);
+				}
+
+				loadData(index+1);
+			} else {
+				var values=plot.values["@attributes"];
+
+
+				options.pace=values.pace || 1;
+
+
+
+				if(values.srctype=="http") {
+					var chart_url=host+((teseo)?"":"clal20/")+"cc/"+values.src;
+					//console.log(chart_url);
+
+
+
+					$.ajax({
+						url:chart_url,
+						success:function(data) {
+
+							chart.values[options["name"]]=(data.split("=")[1]).split(",");
+							for(var i=0;i<chart.values[options["name"]].length;i++) {
+								var val=chart.values[options["name"]][i],
+									value={
+										y:parseFloat(val),
+										marker:{
+											enabled:true,//(i%options.pace===0),
+											radius:(options.marker!=null && i%options.pace===0)?parseInt(options.marker["width"])*2/3:0,
+											index:i%options.pace
+										}
+									};
+								chart.values[options["name"]][i]=(val=="-")?null:value;
+								//parseFloat(val);
+							}
+							loadData(index+1);
+						},
+						error:function(jqXHR, textStatus, errorThrown) {
+							console.error(jqXHR, textStatus, errorThrown)
+						}
+					});
+				}
+				if(values.srctype=="local") {
+
+					options.pace=values.pace || 1;
+
+					chart.values[options["name"]]=plot.values.v.split(",");
+
+					for(var i=0;i<chart.values[options["name"]].length;i++) {
+						var val=chart.values[options["name"]][i],
+							value={
+								y:parseFloat(val),
+								marker:{
+									enabled:true,//(i%options.pace===0),
+									radius:(options.marker!=null && i%options.pace===0)?parseInt(options.marker["width"])*2/3:0,
+									index:i%options.pace
+								}
+							};
+						chart.values[options["name"]][i]=(val=="-")?null:value;
+						//parseFloat(val);
+					}
+
+					loadData(index+1);
+				}
+			}
+
+
+
+
+
+
+		} else {
+			draw();
+		}
+	}
+
+	loadData(0);
+
+	function setBackgroundImage(chart,options){
+
+		var image=(function() {
+				if ('src' in options && options.src !== '') {
+					if (options.src === "../statistiche/clal.swf" || options.src === "../img/clal.png") {
+						if (teseo) {
+							return host + 'clal20/teseo/img/logoChart.png';
+						} else {
+							return host + 'clal20/img/clal.png';
+						}
+					} else {
+						return host + "clal20/img/" + options.src;
+					}
+				} else { // default
+					return host + 'clal20/img/clal.png';
+				}
+			}()),
+			img_w=(options.src=="../statistiche/clal.swf" || !('width' in options))
+				? 518*0.88
+				: options.width,
+			img_h=(options.src=="../statistiche/clal.swf" || !('height' in options))
+				? 202*0.88
+				: options.height,
+			v_width=parseFloat(options.v_width),
+			v_height=parseFloat(options.v_height),
+			w=img_w * (v_width===1?v_width:0.5),
+			h=img_h * (v_height===1?v_height:0.5),
+			x=0,
+			y=0,
+			margin=5;
+		w=img_w*0.6;
+		h=img_h*0.6;
+
+		switch(options.align) {
+			case "right":
+				x=chart.containerWidth-w-chart.optionsMarginRight-margin;
+				break;
+			case "left":
+				x=chart.optionsMarginLeft+margin;
+				break;
+			case "center":
+			default:
+				x=(chart.plotBox.width/2) + chart.plotBox.x - w/2;
+		}
+
+		switch(options.valign) {
+			case "top":
+				y=chart.optionsMarginTop+margin;
+				break;
+			case "bottom":
+				y=chart.containerHeight-h-chart.optionsMarginBottom-margin;
+				break;
+			case "middle":
+			default:
+				y=(chart.plotBox.height/2) + chart.plotBox.y - h/2;
+
+		}
+
+		if(!chart.bgImage) {
+			return chart.renderer.image(image, x, y, w, h).attr({
+				opacity:parseInt((teseo)?teseoStyle.alpha1:options.alpha)/100
+			}).add();
+		} else {
+			chart.bgImage.attr({
+				x:x,
+				y:y
+			});
+		}
+	}
+	function leadZero(n) {
+		if(n<10) {
+			return "0"+n;
+		}
+		return n;
+	}
+	function parseColor(color){
+		var c="#000000";
+		try {
+			if(typeof color != 'undefined')
+				c="#"+color.split("x")[1];
+		} catch(e){
+			console.error(e);
+		}
+		return c;
+	}
+	function transformAlignment(align) {
+		switch(align) {
+			case "left":
+			case "bottom":
+				align="low"
+				break;
+			case "right":
+			case "top":
+				align="high"
+				break;
+			case "center":
+			default:
+				align="middle"
+				break;
+		}
+		return align;
+	}
+	function getTransparentColor(color,alpha) {
+
+		var color=parseColor(color);
+		if(IS_RGBA_SUPPORTED) {
+			var rgb=hexToRgb(color),
+				alpha=parseInt(alpha)/100;
+
+			color="rgba("+rgb.r+","+rgb.g+","+rgb.b+","+(alpha)+")";
+
+		}
+		return color;
+	}
+}
+
+/*
+(function($){
+	addAtomichart("server/xmlproxy.php?url=data/example7.xml","container")
+}(jQuery));
+*/

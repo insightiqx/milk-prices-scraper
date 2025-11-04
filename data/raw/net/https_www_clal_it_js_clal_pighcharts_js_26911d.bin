@@ -1,0 +1,425 @@
+/**
+ * Disegna un grafico a torta, utilizzando la libreria Highcharts
+ * @param Object c Attributi del grafico
+ * @param Object d Dati da visualizzare
+ */
+function drawPie(c,d,u) {
+	
+	var fontSize=c.fontSize?c.fontSize:($('#'+c.container).parent().css("font-size").slice(0,-2));
+	fontSize=fontSize*(c.fontScale || 1);
+
+	/* Formattazione tooltip */
+	var tooltipDec, tooltipPoint, tooltipThousands;
+	if (c.tooltipFormat) {
+		tooltipDec = 		c.tooltipFormat[0]; 	// numero di decimali: dev'essere un numero intero di 1 cifra
+		tooltipPoint = 		c.tooltipFormat[1];			// separatore decimali: dev'essere un carattere
+		tooltipThousands = 	c.tooltipFormat[2];			// separatore migliaia: dev'essere un carattere
+	} else {
+		tooltipDec = 		0;	 // numero di decimali di default
+		tooltipPoint = 		"."; // separatore decimali di default
+		tooltipThousands = 	" "; // separatore migliaia di default
+	}
+	var percentDec, percentPoint;
+	if (c.percentFormat) {
+		percentDec = 		c.percentFormat[0]; 	// numero di decimali: dev'essere un numero intero di 1 cifra
+		percentPoint = 		c.percentFormat[1];			// separatore decimali: dev'essere un carattere
+	} else {
+		percentDec = 		2;	 // numero di decimali di default
+		percentPoint = 		"."; // separatore decimali di default
+	}
+	if (c.logo==undefined) c.logo = true;
+	
+	/*var host=(function(){
+		if(window.location.hostname=="localhost")
+			return "http://localhost/clal/clal20/";
+		return "https://www.clal.it/";
+	}());
+        */
+	var unique = u || c.container;
+	if (window.chart==undefined) window.chart = new Array();
+	
+	window.chart[unique] = new Highcharts.Chart({
+        chart: {
+            plotBackgroundColor: c.backgroundColor || null,
+            plotBackgroundImage: null,
+            plotBorderWidth: null,
+            plotShadow: false,
+            renderTo: unique,
+            marginTop: c.chartTitleLines*fontSize*1.2+15/*spazio per titolo*/+c.chartSubtitleLines*fontSize*0.79*1.2+10/*spazio per sottotitolo*/,
+            marginBottom: c.creditsLines*fontSize*0.79*1.2+15,/*spazio per i credits*/
+            style: {
+            	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+            	color: '#000000'
+            },
+            events: {
+                load: function() {
+                	if (c.logo) {
+
+                        this.logo = addLogoPigh(this);
+                        
+                	}
+                	if (c.creditsHref) {
+	                	this.credits.element.onclick = function() {
+	                		window.open(
+	                        	c.creditsHref,
+	                        	'_blank'
+	                        );
+	                	}
+                	}
+                },
+                redraw: function() {
+                    if (c.logo) {
+                        this.logo = addLogoPigh(this);
+                    }
+                }
+            }
+        },
+        title: {
+            text: c.chartTitle,
+            style: {
+            	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+            	fontSize: fontSize+'px',
+            	fontWeight: 'bold',
+            	lineHeight: fontSize*1.2+'px',
+            	color: c.titleColor || '#000000'
+            }
+        },
+        subtitle: {
+            text: c.chartSubtitle,
+            y: c.chartTitleLines*fontSize*1.2+15,
+            style: {
+            	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+            	fontSize: fontSize*0.79+'px',
+            	lineHeight: fontSize*0.79*1.2+'px',
+            	color: '#444444'
+            }
+        },
+        tooltip: {
+            //headerFormat: '<span style="font-size: '+fontSize*0.71+'px;font-weight:bold">{point.key}</span><br/>',
+    	    //pointFormat: '{series.name}: <b>{point.y}</b>'+c.measureUnit,
+    	    formatter: function() {
+				return '<span style="font-size: '+fontSize*0.71+'px;font-weight:bold">'+this.point.name+'</span><br/>'+this.series.name+': <b>'+Highcharts.numberFormat(this.point.y,tooltipDec,tooltipPoint,tooltipThousands)+'</b>'+c.measureUnit;
+    	    },
+    	    style: {
+            	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+            	fontSize: fontSize*0.71+'px'
+    	    }
+        },
+        legend: {
+            layout: "vertical",
+            align: "left",
+            verticalAlign: "middle"/*,
+            labelFormatter: function(){
+            	console.log(this);
+    			return '<b>'+this.name+'</b>: '+this.percentage+'%';
+			}
+    		*/
+        },
+        plotOptions: {
+            pie: {
+                allowPointSelect: true,
+                cursor: 'pointer',
+                center: [c.centerX||"50%",c.centerY||"50%"],
+                dataLabels: {
+            		enabled: (c.legend)?(!c.legend):true,
+                    color: '#000000',
+                    //connectorColor: '#000000',
+                    distance: parseInt(c.labelDistance||30),
+                    style: {
+                    	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+                    	fontSize: fontSize*0.86+'px'
+        			}
+                },
+                showInLegend: c.legend||false,
+                startAngle: c.startAngle || 0
+            }
+        },
+        series: [{
+            type: 'pie',
+            name: c.seriesName,
+            data: d,
+			innerSize: c.innerSize||0,
+            dataLabels: {
+                enabled: (c.legend)?(!c.legend):true,
+                formatter: function(){
+            		return '<b>'+this.point.name+'</b>: '+Highcharts.numberFormat(this.percentage,percentDec,percentPoint)+'%';
+        		}
+        	}
+        }],
+        credits: {
+			enabled: c.creditsLines!=0,
+			//href: host,
+			href: c.creditsHref || null,
+			text: c.credits || 'clal.it',
+			position: {
+        		align: c.creditsXalign || 'left',
+        		x: 15,
+        		verticalAlign: 'bottom',
+        		y: -(c.creditsLines*fontSize*0.79*1.2-5)
+        	},
+        	style: {
+        		fontSize: fontSize*0.79+'px',
+        		lineHeight: fontSize*0.79*1.2+'px'
+        	}
+        },
+        navigation: {
+            buttonOptions: {
+            	backgroundColor: {
+        			stops: [[0.99, "#FFFFFF"]]
+        		},
+        		borderColor: "#CCCCCC",
+        		hoverBorderColor: "#BBBBBB"
+        	}
+        },
+        /* stile per i button di esportazione */
+        exporting: {
+            enabled: true,
+            enableImages: true,
+            buttons: {
+            	exportButton: {
+        			symbolFill: "none",
+        			symbolStroke: "#CCCCCC",
+        			hoverSymbolFill: "#2E9AFE",
+        			hoverSymbolStroke: "#CCCCCC"
+        		},
+        		printButton: {
+        			symbolFill: "none",
+        			symbolStroke: "#CCCCCC",
+        			hoverSymbolFill: "#2E9AFE",
+        			hoverSymbolStroke: "#CCCCCC"
+        		}
+        	}
+        }
+	});
+
+	if (!u) {
+	    /* Listener per aggiornare il grafico nel caso in cui le dimensioni del font del div vari */
+		$('#'+c.container).styleListener({
+		    styles: ['font-size'],
+		    changed: function() {
+				window.chart[unique].destroy();
+				drawPie(c,d,unique);
+		    }
+		});
+	}
+};
+
+/**
+ * Disegna un grafico a torta, utilizzando la libreria Highcharts
+ * @param Object c Attributi del grafico
+ * @param Object d Dati da visualizzare
+ */
+function drawPieQta(c,d,u) {
+	
+	var fontSize=c.fontSize?c.fontSize:($('#'+c.container).parent().css("font-size").slice(0,-2));
+	fontSize=fontSize*(c.fontScale || 1);
+
+	/* Formattazione tooltip */
+	var tooltipDec, tooltipPoint, tooltipThousands;
+	if (c.tooltipFormat) {
+		tooltipDec = 		c.tooltipFormat[0]; 	// numero di decimali: dev'essere un numero intero di 1 cifra
+		tooltipPoint = 		c.tooltipFormat[1];			// separatore decimali: dev'essere un carattere
+		tooltipThousands = 	c.tooltipFormat[2];			// separatore migliaia: dev'essere un carattere
+	} else {
+		tooltipDec = 		0;	 // numero di decimali di default
+		tooltipPoint = 		","; // separatore decimali di default
+		tooltipThousands = 	"."; // separatore migliaia di default
+	}
+	var percentDec, percentPoint;
+	if (c.percentFormat) {
+		percentDec = 		c.percentFormat[0]; 	// numero di decimali: dev'essere un numero intero di 1 cifra
+		percentPoint = 		c.percentFormat[1];			// separatore decimali: dev'essere un carattere
+	} else {
+		percentDec = 		2;	 // numero di decimali di default
+		percentPoint = 		"."; // separatore decimali di default
+	}
+	if (c.logo==undefined) c.logo = true;
+	
+	/*var host=(function(){
+		if(window.location.hostname=="localhost")
+			return "http://localhost/clal/clal20/";
+		return "https://www.clal.it/";
+	}());
+        */
+	var unique = u || c.container;
+	if (window.chart==undefined) window.chart = new Array();
+	
+	window.chart[unique] = new Highcharts.Chart({
+        chart: {
+            plotBackgroundColor: c.backgroundColor || null,
+            plotBackgroundImage: null,
+            plotBorderWidth: null,
+            plotShadow: false,
+            renderTo: unique,
+            marginTop: c.chartTitleLines*fontSize*1.2+15/*spazio per titolo*/+c.chartSubtitleLines*fontSize*0.79*1.2+10/*spazio per sottotitolo*/,
+            marginBottom: c.creditsLines*fontSize*0.79*1.2+15,/*spazio per i credits*/
+            style: {
+            	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+            	color: '#000000'
+            },
+            events: {
+                load: function() {
+                	if (c.logo) {
+                        this.logo = addLogoPigh(this);
+                    }
+                	if (c.creditsHref) {
+	                	this.credits.element.onclick = function() {
+	                		window.open(
+	                        	c.creditsHref,
+	                        	'_blank'
+	                        );
+	                	}
+                	}
+                },
+                redraw: function() {
+                    if (c.logo) {
+                        this.logo = addLogoPigh(this);
+                    }
+                }
+            }
+        },
+        title: {
+            text: c.chartTitle,
+            style: {
+            	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+            	fontSize: fontSize+'px',
+            	fontWeight: 'bold',
+            	lineHeight: fontSize*1.2+'px',
+            	color: c.titleColor || '#FF0000'
+            }
+        },
+        subtitle: {
+            text: c.chartSubtitle,
+            y: c.chartTitleLines*fontSize*1.2+15,
+            style: {
+            	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+//            	fontWeight: 'bold',
+            	fontSize: fontSize*0.9+'px',
+            	lineHeight: fontSize*0.79*1.6+'px',
+//            	color: '#FF0000'
+            }
+        },
+        tooltip: {
+            //headerFormat: '<span style="font-size: '+fontSize*0.71+'px;font-weight:bold">{point.key}</span><br/>',
+    	    //pointFormat: '{series.name}: <b>{point.y}</b>'+c.measureUnit,
+    	    formatter: function() {
+				return '<span style="font-size: '+fontSize*0.71+'px;font-weight:bold">'+this.point.name+'</span><br/>'+this.series.name+': <b>'+Highcharts.numberFormat(this.point.y,tooltipDec,tooltipPoint,tooltipThousands)+'</b>'+c.measureUnit;
+    	    },
+    	    style: {
+            	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+            	fontSize: fontSize*0.71+'px'
+    	    }
+        },
+        legend: {
+            layout: "vertical",
+            align: "left",
+            verticalAlign: "middle"/*,
+            labelFormatter: function(){
+            	console.log(this);
+    			return '<b>'+this.name+'</b>: '+this.percentage+'%';
+			}
+    		*/
+        },
+        plotOptions: {
+            pie: {
+                allowPointSelect: true,
+                cursor: 'pointer',
+                center: [c.centerX||"50%",c.centerY||"50%"],
+                dataLabels: {
+            		enabled: (c.legend)?(!c.legend):true,
+                    color: '#000000',
+                    //connectorColor: '#000000',
+                    distance: parseInt(c.labelDistance||30),
+                    style: {
+                    	fontFamily: 'Verdana, Arial, Helvetica, sans-serif',
+                    	fontSize: fontSize*0.86+'px'
+        			}
+                },
+                showInLegend: c.legend||false,
+                startAngle: c.startAngle || 0
+            }
+        },
+        series: [{
+            type: 'pie',
+            name: c.seriesName,
+            data: d,
+			innerSize: c.innerSize||0,
+            dataLabels: {
+                enabled: (c.legend)?(!c.legend):true,
+                formatter: function(){
+            		return '<span style="line-height:18px"><b>'+this.point.name+'</b>:<br><font style="font-size: '+fontSize*0.61+'px;">'+Highcharts.numberFormat(this.point.y,tooltipDec,tooltipPoint,tooltipThousands)+''+c.measureUnit+', '+Highcharts.numberFormat(this.percentage,percentDec,percentPoint)+'%</font></span>';
+        		}
+        	}
+        }],
+        credits: {
+			enabled: c.creditsLines!=0,
+			//href: host,
+			href: c.creditsHref || null,
+			text: c.credits || 'clal.it',
+			position: {
+        		align: c.creditsXalign || 'left',
+        		x: 15,
+        		verticalAlign: 'bottom',
+        		y: -(c.creditsLines*fontSize*0.79*1.2-5)
+        	},
+        	style: {
+        		fontSize: fontSize*0.79+'px',
+        		lineHeight: fontSize*0.79*1.2+'px'
+        	}
+        },
+        navigation: {
+            buttonOptions: {
+            	backgroundColor: {
+        			stops: [[0.99, "#FFFFFF"]]
+        		},
+        		borderColor: "#CCCCCC",
+        		hoverBorderColor: "#BBBBBB"
+        	}
+        },
+        /* stile per i button di esportazione */
+        exporting: {
+            enabled: true,
+            enableImages: true,
+            buttons: {
+            	exportButton: {
+        			symbolFill: "none",
+        			symbolStroke: "#CCCCCC",
+        			hoverSymbolFill: "#2E9AFE",
+        			hoverSymbolStroke: "#CCCCCC"
+        		},
+        		printButton: {
+        			symbolFill: "none",
+        			symbolStroke: "#CCCCCC",
+        			hoverSymbolFill: "#2E9AFE",
+        			hoverSymbolStroke: "#CCCCCC"
+        		}
+        	}
+        }
+	});
+
+	if (!u) {
+	    /* Listener per aggiornare il grafico nel caso in cui le dimensioni del font del div vari */
+		$('#'+c.container).styleListener({
+		    styles: ['font-size'],
+		    changed: function() {
+				window.chart[unique].destroy();
+				drawPieQta(c,d,unique);
+		    }
+		});
+	}
+};
+
+function addLogoPigh(chart) { // call this on complete
+
+    if (chart.logo) {
+        $(chart.logo.element).remove();
+    }
+
+    var src = $('html').hasClass('teseo')?'teseo/img/logoTeseoY.png':'https://www.clal.it/img/clal.png';
+    var h = $('html').hasClass('teseo')?25.7:35;
+    var logo = chart.renderer.image(src,chart.chartWidth-90-15,chart.chartHeight-h-5,90,h);
+    logo.add();
+
+    return logo;
+
+};
